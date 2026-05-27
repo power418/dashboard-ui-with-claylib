@@ -1,0 +1,64 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+bin/
+obj/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+install_manifest.txt
+
+# Native binaries and libraries
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+*.out
+*.app/
+
+# Debug and profiling artefacts
+*.o
+*.obj
+*.pdb
+*.ilk
+*.dSYM/
+core
+core.*
+vgcore.*
+perf.data*
+gmon.out
+
+# Generated media / captures
+*.bmp
+*.png
+*.jpg
+*.jpeg
+*.tga
+*.ppm
+
+# Editor and IDE state
+.vscode/
+.idea/
+.cache/
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local environment files
+.env
+.env.*
+!.env.example
