@@ -54,11 +54,11 @@ constexpr Clay_Color Transparent = Rgba(0, 0, 0, 0);
 } // namespace Pal
 
 bool gHandCursorRequested = false;
-dashboard::AntiAliasMode gAntiAliasMode = dashboard::AntiAliasMode::FXAA;
+dashboard::AntiAliasMode gAntiAliasMode = dashboard::AntiAliasMode::SMAA;
 float gUiScale = 1.0f;
 int gRenderScale = 1;
-int gRequestedRenderScale = 1;
-char gAntiAliasBadge[32] = "FXAA 1x";
+int gRequestedRenderScale = 2;
+char gAntiAliasBadge[32] = "SMAA 1x";
 
 float Scale(float value) {
     return value * gUiScale;
@@ -1104,21 +1104,90 @@ void DrawBorder(SDL_Renderer *renderer, Clay_BoundingBox box, Clay_BorderRenderD
     }
 }
 
-void DrawLineThick(SDL_Renderer *renderer, float x1, float y1, float x2, float y2, Clay_Color color, int thickness = 1) {
-    SetColor(renderer, color);
-    thickness = ScalePixels(thickness);
-    if (thickness <= 1) {
-        SDL_RenderDrawLine(renderer, static_cast<int>(std::round(x1)), static_cast<int>(std::round(y1)), static_cast<int>(std::round(x2)), static_cast<int>(std::round(y2)));
+float FractionalPart(float value) {
+    return value - std::floor(value);
+}
+
+float ReverseFractionalPart(float value) {
+    return 1.0f - FractionalPart(value);
+}
+
+void PlotAALinePoint(SDL_Renderer *renderer, bool steep, int x, int y, Clay_Color color, float coverage) {
+    coverage = std::clamp(coverage, 0.0f, 1.0f);
+    if (coverage <= 0.01f || color.a <= 0.0f) {
         return;
     }
-    const bool horizontal = std::fabs(x2 - x1) >= std::fabs(y2 - y1);
-    const int half = thickness / 2;
-    for (int offset = -half; offset <= half; ++offset) {
-        if (horizontal) {
-            SDL_RenderDrawLine(renderer, static_cast<int>(std::round(x1)), static_cast<int>(std::round(y1 + offset)), static_cast<int>(std::round(x2)), static_cast<int>(std::round(y2 + offset)));
-        } else {
-            SDL_RenderDrawLine(renderer, static_cast<int>(std::round(x1 + offset)), static_cast<int>(std::round(y1)), static_cast<int>(std::round(x2 + offset)), static_cast<int>(std::round(y2)));
-        }
+    SetColor(renderer, WithAlpha(color, coverage));
+    if (steep) {
+        SDL_RenderDrawPoint(renderer, y, x);
+    } else {
+        SDL_RenderDrawPoint(renderer, x, y);
+    }
+}
+
+void DrawLineAA(SDL_Renderer *renderer, float x0, float y0, float x1, float y1, Clay_Color color) {
+    bool steep = std::fabs(y1 - y0) > std::fabs(x1 - x0);
+    if (steep) {
+        std::swap(x0, y0);
+        std::swap(x1, y1);
+    }
+    if (x0 > x1) {
+        std::swap(x0, x1);
+        std::swap(y0, y1);
+    }
+
+    const float dx = x1 - x0;
+    const float dy = y1 - y0;
+    if (std::fabs(dx) < 0.001f) {
+        PlotAALinePoint(renderer, steep, static_cast<int>(std::round(x0)), static_cast<int>(std::round(y0)), color, 1.0f);
+        return;
+    }
+    const float gradient = dy / dx;
+
+    float xEnd = std::round(x0);
+    float yEnd = y0 + gradient * (xEnd - x0);
+    float xGap = ReverseFractionalPart(x0 + 0.5f);
+    int xPixel1 = static_cast<int>(xEnd);
+    int yPixel1 = static_cast<int>(std::floor(yEnd));
+    PlotAALinePoint(renderer, steep, xPixel1, yPixel1, color, ReverseFractionalPart(yEnd) * xGap);
+    PlotAALinePoint(renderer, steep, xPixel1, yPixel1 + 1, color, FractionalPart(yEnd) * xGap);
+    float intery = yEnd + gradient;
+
+    xEnd = std::round(x1);
+    yEnd = y1 + gradient * (xEnd - x1);
+    xGap = FractionalPart(x1 + 0.5f);
+    int xPixel2 = static_cast<int>(xEnd);
+    int yPixel2 = static_cast<int>(std::floor(yEnd));
+    PlotAALinePoint(renderer, steep, xPixel2, yPixel2, color, ReverseFractionalPart(yEnd) * xGap);
+    PlotAALinePoint(renderer, steep, xPixel2, yPixel2 + 1, color, FractionalPart(yEnd) * xGap);
+
+    for (int x = xPixel1 + 1; x <= xPixel2 - 1; ++x) {
+        const int y = static_cast<int>(std::floor(intery));
+        PlotAALinePoint(renderer, steep, x, y, color, ReverseFractionalPart(intery));
+        PlotAALinePoint(renderer, steep, x, y + 1, color, FractionalPart(intery));
+        intery += gradient;
+    }
+}
+
+void DrawLineThick(SDL_Renderer *renderer, float x1, float y1, float x2, float y2, Clay_Color color, int thickness = 1) {
+    thickness = ScalePixels(thickness);
+    if (thickness <= 1) {
+        DrawLineAA(renderer, x1, y1, x2, y2, color);
+        return;
+    }
+    const float dx = x2 - x1;
+    const float dy = y2 - y1;
+    const float length = std::sqrt(dx * dx + dy * dy);
+    if (length <= 0.001f) {
+        FillCircle(renderer, static_cast<int>(std::round(x1)), static_cast<int>(std::round(y1)), std::max(1, thickness / 2), color);
+        return;
+    }
+    const float nx = -dy / length;
+    const float ny = dx / length;
+    const float center = (static_cast<float>(thickness) - 1.0f) * 0.5f;
+    for (int i = 0; i < thickness; ++i) {
+        const float offset = static_cast<float>(i) - center;
+        DrawLineAA(renderer, x1 + nx * offset, y1 + ny * offset, x2 + nx * offset, y2 + ny * offset, color);
     }
 }
 

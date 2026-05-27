@@ -19,10 +19,10 @@ void main() {
     vec4 bottom = texture(uTexture, vUv + vec2(0.0, texel.y));
 
     vec4 mixedColor = center;
-    mixedColor += (left - center) * weights.x * 0.24;
-    mixedColor += (right - center) * weights.y * 0.24;
-    mixedColor += (top - center) * weights.z * 0.24;
-    mixedColor += (bottom - center) * weights.w * 0.24;
+    mixedColor += (left - center) * weights.x * 0.36;
+    mixedColor += (right - center) * weights.y * 0.36;
+    mixedColor += (top - center) * weights.z * 0.36;
+    mixedColor += (bottom - center) * weights.w * 0.36;
 
     fragColor = vec4(mixedColor.rgb, center.a);
 }

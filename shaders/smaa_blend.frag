@@ -15,8 +15,8 @@ void main() {
     vec2 top = texture(uEdges, vUv - vec2(0.0, texel.y)).rg;
     vec2 bottom = texture(uEdges, vUv + vec2(0.0, texel.y)).rg;
 
-    float verticalWeight = edge.x * max(max(left.x, right.x), 0.35);
-    float horizontalWeight = edge.y * max(max(top.y, bottom.y), 0.35);
+    float verticalWeight = edge.x * max(max(left.x, right.x), 0.55);
+    float horizontalWeight = edge.y * max(max(top.y, bottom.y), 0.55);
 
     vec4 weights = vec4(
         verticalWeight * left.x,
@@ -25,5 +25,5 @@ void main() {
         horizontalWeight * bottom.y);
 
     float normalization = max(max(weights.x + weights.y, weights.z + weights.w), 1.0);
-    fragColor = weights / normalization;
+    fragColor = clamp(weights / normalization, 0.0, 1.0);
 }
