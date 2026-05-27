@@ -6,10 +6,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(PkgConfig REQUIRED)
+if(UNIX AND NOT APPLE)
+  find_package(PkgConfig REQUIRED)
+endif()
 find_package(OpenGL REQUIRED)
-pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
-pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
+include(cmake/Dependencies.cmake)
 
 add_executable(dashboard_clay
     src/main.cpp
@@ -22,18 +23,20 @@ target_include_directories(dashboard_clay PRIVATE
 
 target_link_libraries(dashboard_clay PRIVATE
     OpenGL::GL
-    PkgConfig::SDL2
-    PkgConfig::SDL2_TTF
+    ${DASHBOARD_SDL_TARGET}
+    ${DASHBOARD_SDL_TTF_TARGET}
 )
 
 target_compile_definitions(dashboard_clay PRIVATE
+    SDL_MAIN_HANDLED
+    SDL_ENABLE_OLD_NAMES
     DASHBOARD_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
 )
 
 if (MSVC)
-    target_compile_options(dashboard_clay PRIVATE /W4)
+  target_compile_options(dashboard_clay PRIVATE /W4)
 else()
-    target_compile_options(dashboard_clay PRIVATE
+  target_compile_options(dashboard_clay PRIVATE
         -Wall
         -Wextra
         -Wno-missing-field-initializers

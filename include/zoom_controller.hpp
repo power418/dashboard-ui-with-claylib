@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>
@@ -13,7 +13,7 @@ namespace dashboard {
 class ZoomController {
 public:
     bool HandleEvent(const SDL_Event &event) {
-        if (event.type == SDL_MOUSEWHEEL) {
+        if (event.type == SDL_EVENT_MOUSE_WHEEL) {
             if (!AcceleratorDown(SDL_GetModState())) {
                 return false;
             }
@@ -32,11 +32,11 @@ public:
             return true;
         }
 
-        if (event.type != SDL_KEYDOWN || !AcceleratorDown(static_cast<SDL_Keymod>(event.key.keysym.mod))) {
+        if (event.type != SDL_EVENT_KEY_DOWN || !AcceleratorDown(event.key.mod)) {
             return false;
         }
 
-        switch (event.key.keysym.sym) {
+        switch (event.key.key) {
             case SDLK_PLUS:
             case SDLK_EQUALS:
             case SDLK_KP_PLUS:

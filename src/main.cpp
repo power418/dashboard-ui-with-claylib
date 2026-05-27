@@ -1,5 +1,16 @@
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3_ttf/SDL_ttf.h>
+
+#ifdef SDL_RenderDrawLine
+#undef SDL_RenderDrawLine
+#endif
+#define SDL_RenderDrawLine SDL_RenderLine
+
+#ifdef SDL_RenderDrawPoint
+#undef SDL_RenderDrawPoint
+#endif
+#define SDL_RenderDrawPoint SDL_RenderPoint
 
 #define CLAY_IMPLEMENTATION
 #include "../lib/clay.h"
@@ -889,7 +900,7 @@ Clay_Dimensions MeasureText(Clay_StringSlice text, Clay_TextElementConfig *confi
     std::string value(text.chars, static_cast<size_t>(text.length));
     int width = 0;
     int height = 0;
-    if (TTF_SizeUTF8(font, value.c_str(), &width, &height) != 0) {
+    if (!TTF_GetStringSize(font, value.c_str(), 0, &width, &height)) {
         return Clay_Dimensions{0.0f, static_cast<float>(fontSize + 4)};
     }
     const float letterSpacing = config ? static_cast<float>(config->letterSpacing) * std::max(0, text.length - 1) : 0.0f;
@@ -979,6 +990,30 @@ SDL_Rect Rect(Clay_BoundingBox box) {
     };
 }
 
+SDL_FRect FRect(SDL_Rect rect) {
+    return SDL_FRect{
+        static_cast<float>(rect.x),
+        static_cast<float>(rect.y),
+        static_cast<float>(rect.w),
+        static_cast<float>(rect.h),
+    };
+}
+
+void FillRect(SDL_Renderer *renderer, const SDL_Rect &rect) {
+    const SDL_FRect fRect = FRect(rect);
+    SDL_RenderFillRect(renderer, &fRect);
+}
+
+void DrawRect(SDL_Renderer *renderer, const SDL_Rect &rect) {
+    const SDL_FRect fRect = FRect(rect);
+    SDL_RenderRect(renderer, &fRect);
+}
+
+void RenderTexture(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_Rect &dst) {
+    const SDL_FRect fDst = FRect(dst);
+    SDL_RenderTexture(renderer, texture, nullptr, &fDst);
+}
+
 void SetColor(SDL_Renderer *renderer, Clay_Color color) {
     SDL_Color c = ToSdl(color);
     SDL_SetRenderDrawColor(renderer, c.r, c.g, c.b, c.a);
@@ -1023,16 +1058,16 @@ void FillRoundedRect(SDL_Renderer *renderer, Clay_BoundingBox box, Clay_Color co
     SetColor(renderer, color);
     if (r == 0) {
         SDL_Rect rect{x, y, w, h};
-        SDL_RenderFillRect(renderer, &rect);
+        FillRect(renderer, rect);
         return;
     }
 
     SDL_Rect center{x + r, y, w - (2 * r), h};
     SDL_Rect left{x, y + r, r, h - (2 * r)};
     SDL_Rect right{x + w - r, y + r, r, h - (2 * r)};
-    SDL_RenderFillRect(renderer, &center);
-    SDL_RenderFillRect(renderer, &left);
-    SDL_RenderFillRect(renderer, &right);
+    FillRect(renderer, center);
+    FillRect(renderer, left);
+    FillRect(renderer, right);
 
     for (int dy = 0; dy < r; ++dy) {
         const float cornerY = static_cast<float>(r - dy) - 0.5f;
@@ -1101,7 +1136,7 @@ void DrawBorder(SDL_Renderer *renderer, Clay_BoundingBox box, Clay_BorderRenderD
     const SDL_Rect rect = Rect(box);
     for (int i = 0; i < maxWidth; ++i) {
         SDL_Rect inset{rect.x + i, rect.y + i, std::max(0, rect.w - 2 * i), std::max(0, rect.h - 2 * i)};
-        SDL_RenderDrawRect(renderer, &inset);
+        DrawRect(renderer, inset);
     }
 }
 
@@ -1204,7 +1239,7 @@ void DrawTextRaw(SDL_Renderer *renderer, FontBook &fonts, const std::string &val
     TextTextureKey key{renderer, value, fontId, size, PackedColor(sdlColor)};
     auto found = gTextTextureCache.find(key);
     if (found == gTextTextureCache.end()) {
-        SDL_Surface *surface = TTF_RenderUTF8_Blended(font, value.c_str(), sdlColor);
+        SDL_Surface *surface = TTF_RenderText_Blended(font, value.c_str(), 0, sdlColor);
         if (!surface) {
             return;
         }
@@ -1219,7 +1254,7 @@ void DrawTextRaw(SDL_Renderer *renderer, FontBook &fonts, const std::string &val
     }
     SDL_SetTextureBlendMode(found->second.texture, copyAlpha ? SDL_BLENDMODE_NONE : SDL_BLENDMODE_BLEND);
     SDL_Rect dst{static_cast<int>(std::round(x)), static_cast<int>(std::round(y)), found->second.width, found->second.height};
-    SDL_RenderCopy(renderer, found->second.texture, nullptr, &dst);
+    RenderTexture(renderer, found->second.texture, dst);
 }
 
 void DrawTextCommand(SDL_Renderer *renderer, FontBook &fonts, Clay_RenderCommand *command) {
@@ -1234,7 +1269,7 @@ void DrawTextCommand(SDL_Renderer *renderer, FontBook &fonts, Clay_RenderCommand
     }
     int textWidth = 0;
     int textHeight = 0;
-    TTF_SizeUTF8(font, value.c_str(), &textWidth, &textHeight);
+    TTF_GetStringSize(font, value.c_str(), 0, &textWidth, &textHeight);
     const float y = command->boundingBox.y + std::max(0.0f, (command->boundingBox.height - static_cast<float>(textHeight)) * 0.5f);
     DrawTextRaw(renderer, fonts, value, command->boundingBox.x, y, data.textColor, data.fontSize, data.fontId);
 }
@@ -1253,7 +1288,7 @@ void DrawTextCommandScaled(SDL_Renderer *renderer, FontBook &fonts, Clay_RenderC
 
     int textWidth = 0;
     int textHeight = 0;
-    TTF_SizeUTF8(font, value.c_str(), &textWidth, &textHeight);
+    TTF_GetStringSize(font, value.c_str(), 0, &textWidth, &textHeight);
     const float x = command->boundingBox.x * inverseScale;
     const float boxY = command->boundingBox.y * inverseScale;
     const float boxHeight = command->boundingBox.height * inverseScale;
@@ -1408,9 +1443,9 @@ void DrawIcon(SDL_Renderer *renderer, FontBook &fonts, Clay_BoundingBox box, con
             SDL_Rect a{static_cast<int>(x + U(2)), static_cast<int>(y + U(3)), static_cast<int>(U(4)), static_cast<int>(U(4))};
             SDL_Rect b{static_cast<int>(x + U(7)), static_cast<int>(y + U(3)), static_cast<int>(U(4)), static_cast<int>(U(4))};
             SDL_Rect c{static_cast<int>(x + U(2)), static_cast<int>(y + U(8)), static_cast<int>(U(9)), static_cast<int>(U(3))};
-            SDL_RenderDrawRect(renderer, &a);
-            SDL_RenderDrawRect(renderer, &b);
-            SDL_RenderDrawRect(renderer, &c);
+            DrawRect(renderer, a);
+            DrawRect(renderer, b);
+            DrawRect(renderer, c);
             break;
         }
         case 4: {
@@ -1535,7 +1570,7 @@ void RenderClay(SDL_Renderer *renderer, FontBook &fonts, Clay_RenderCommandArray
                 break;
             case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START: {
                 SDL_Rect current{};
-                const SDL_bool clipEnabled = SDL_RenderIsClipEnabled(renderer);
+                const bool clipEnabled = SDL_RenderClipEnabled(renderer);
                 SDL_RenderGetClipRect(renderer, &current);
                 clipStack.push_back(clipEnabled ? current : SDL_Rect{0, 0, 0, 0});
                 SDL_Rect clip = Rect(command->boundingBox);
@@ -1578,7 +1613,7 @@ void RenderClayTextOverlay(SDL_Renderer *renderer, FontBook &fonts, Clay_RenderC
                 break;
             case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START: {
                 SDL_Rect current{};
-                const SDL_bool clipEnabled = SDL_RenderIsClipEnabled(renderer);
+                const bool clipEnabled = SDL_RenderClipEnabled(renderer);
                 SDL_RenderGetClipRect(renderer, &current);
                 clipStack.push_back(clipEnabled ? current : SDL_Rect{0, 0, 0, 0});
                 SDL_Rect clip = Rect(ScaledBox(command->boundingBox, inverseScale));
@@ -1607,17 +1642,16 @@ void RenderClayTextOverlay(SDL_Renderer *renderer, FontBook &fonts, Clay_RenderC
 } // namespace
 
 int main() {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
-    if (TTF_Init() != 0) {
-        std::fprintf(stderr, "TTF_Init failed: %s\n", TTF_GetError());
+    if (!TTF_Init()) {
+        std::fprintf(stderr, "TTF_Init failed: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
     }
 
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -1628,11 +1662,9 @@ int main() {
 
     SDL_Window *window = SDL_CreateWindow(
         "Clay Dashboard",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
         kInitialWidth,
         kInitialHeight,
-        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_MAXIMIZED);
     if (!window) {
         std::fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         TTF_Quit();
@@ -1655,6 +1687,13 @@ int main() {
         return 1;
     }
     SDL_GL_MakeCurrent(window, glContext);
+    if (!dashboard::LoadOpenGLFunctions()) {
+        SDL_GL_DeleteContext(glContext);
+        SDL_DestroyWindow(window);
+        TTF_Quit();
+        SDL_Quit();
+        return 1;
+    }
     SDL_GL_SetSwapInterval(1);
 
     dashboard::SoftwareRenderBuffer renderBuffer;
@@ -1696,31 +1735,31 @@ int main() {
         float scrollY = 0.0f;
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
+            if (event.type == SDL_EVENT_QUIT) {
                 running = false;
-            } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
+            } else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
                 running = false;
-            } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F11) {
+            } else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F11) {
                 fullscreen = !fullscreen;
-                SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                SDL_SetWindowFullscreen(window, fullscreen);
             } else if (dashboard::HandleZoomEvent(event)) {
                 continue;
-            } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_1) {
+            } else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_1) {
                 gAntiAliasMode = dashboard::AntiAliasMode::Off;
-            } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_2) {
+            } else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_2) {
                 gAntiAliasMode = dashboard::AntiAliasMode::FXAA;
-            } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_3) {
+            } else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_3) {
                 gAntiAliasMode = dashboard::AntiAliasMode::SMAA;
-            } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_4) {
+            } else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_4) {
                 gRequestedRenderScale = gRequestedRenderScale == 1 ? 2 : 1;
-            } else if (event.type == SDL_MOUSEWHEEL) {
+            } else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
                 scrollY = static_cast<float>(event.wheel.y) * 20.0f;
             }
         }
 
         int drawableWidth = 0;
         int drawableHeight = 0;
-        SDL_GL_GetDrawableSize(window, &drawableWidth, &drawableHeight);
+        SDL_GetWindowSizeInPixels(window, &drawableWidth, &drawableHeight);
         int windowWidth = 0;
         int windowHeight = 0;
         SDL_GetWindowSize(window, &windowWidth, &windowHeight);
@@ -1749,12 +1788,12 @@ int main() {
         }
         Clay_SetLayoutDimensions(Clay_Dimensions{static_cast<float>(renderWidth), static_cast<float>(renderHeight)});
 
-        int mouseX = 0;
-        int mouseY = 0;
-        const Uint32 mouseButtons = SDL_GetMouseState(&mouseX, &mouseY);
+        float mouseX = 0.0f;
+        float mouseY = 0.0f;
+        const SDL_MouseButtonFlags mouseButtons = SDL_GetMouseState(&mouseX, &mouseY);
         const float mouseScaleX = windowWidth > 0 ? static_cast<float>(renderWidth) / static_cast<float>(windowWidth) : 1.0f;
         const float mouseScaleY = windowHeight > 0 ? static_cast<float>(renderHeight) / static_cast<float>(windowHeight) : 1.0f;
-        Clay_SetPointerState(Clay_Vector2{static_cast<float>(mouseX) * mouseScaleX, static_cast<float>(mouseY) * mouseScaleY}, (mouseButtons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0);
+        Clay_SetPointerState(Clay_Vector2{mouseX * mouseScaleX, mouseY * mouseScaleY}, (mouseButtons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0);
         Clay_UpdateScrollContainers(true, Clay_Vector2{0.0f, scrollY}, deltaTime);
 
         SDL_Renderer *renderer = renderBuffer.Renderer();

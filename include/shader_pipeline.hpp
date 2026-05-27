@@ -1,12 +1,6 @@
 #pragma once
 
-#ifndef GL_GLEXT_PROTOTYPES
-#define GL_GLEXT_PROTOTYPES
-#endif
-
 #include "render_buffer.hpp"
-
-#include <SDL2/SDL_opengl.h>
 
 #include <array>
 #include <cstdio>

@@ -1,11 +1,8 @@
 #pragma once
 
-#ifndef GL_GLEXT_PROTOTYPES
-#define GL_GLEXT_PROTOTYPES
-#endif
+#include <SDL3/SDL.h>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+#include "gl_loader.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -44,9 +41,9 @@ public:
         height_ = requestedHeight;
         linearFiltering_ = linearFiltering;
 
-        surface_ = SDL_CreateRGBSurfaceWithFormat(0, width_, height_, 32, SDL_PIXELFORMAT_RGBA32);
+        surface_ = SDL_CreateSurface(width_, height_, SDL_PIXELFORMAT_RGBA32);
         if (!surface_) {
-            std::fprintf(stderr, "SDL_CreateRGBSurfaceWithFormat failed: %s\n", SDL_GetError());
+            std::fprintf(stderr, "SDL_CreateSurface failed: %s\n", SDL_GetError());
             return false;
         }
 
