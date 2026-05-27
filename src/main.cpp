@@ -4,6 +4,7 @@
 #define CLAY_IMPLEMENTATION
 #include "../lib/clay.h"
 
+#include "../include/zoom_controller.hpp"
 #include "../include/shader_pipeline.hpp"
 
 #include <algorithm>
@@ -58,7 +59,7 @@ dashboard::AntiAliasMode gAntiAliasMode = dashboard::AntiAliasMode::SMAA;
 float gUiScale = 1.0f;
 int gRenderScale = 1;
 int gRequestedRenderScale = 2;
-char gAntiAliasBadge[32] = "SMAA 1x";
+char gAntiAliasBadge[48] = "SMAA 1x 100%";
 
 float Scale(float value) {
     return value * gUiScale;
@@ -351,7 +352,7 @@ void Header() {
             SearchBox();
             Spacer();
             CLAY_AUTO_ID({
-                .layout = Layout(Fixed(64), Fixed(22), CLAY_LEFT_TO_RIGHT, {}, 0, Align(CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER)),
+                .layout = Layout(Fixed(82), Fixed(22), CLAY_LEFT_TO_RIGHT, {}, 0, Align(CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER)),
                 .backgroundColor = HoverColor(Rgba(30, 32, 38), Rgba(38, 42, 50), true),
                 .cornerRadius = Radius(11),
                 .border = {.color = HoverColor(Rgba(45, 48, 58), Rgba(70, 78, 92)), .width = BorderAll(1)},
@@ -1702,6 +1703,8 @@ int main() {
             } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F11) {
                 fullscreen = !fullscreen;
                 SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+            } else if (dashboard::HandleZoomEvent(event)) {
+                continue;
             } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_1) {
                 gAntiAliasMode = dashboard::AntiAliasMode::Off;
             } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_2) {
@@ -1732,8 +1735,8 @@ int main() {
         const int renderWidth = std::max(1, drawableWidth * renderScale);
         const int renderHeight = std::max(1, drawableHeight * renderScale);
         gRenderScale = renderScale;
-        gUiScale = static_cast<float>(renderScale) * dpiScale;
-        std::snprintf(gAntiAliasBadge, sizeof(gAntiAliasBadge), "%s %dx", dashboard::AntiAliasModeName(gAntiAliasMode), gRenderScale);
+        gUiScale = static_cast<float>(renderScale) * dpiScale * dashboard::ZoomScale();
+        std::snprintf(gAntiAliasBadge, sizeof(gAntiAliasBadge), "%s %dx %d%%", dashboard::AntiAliasModeName(gAntiAliasMode), gRenderScale, dashboard::ZoomPercent());
         if (renderBuffer.Renderer() && (renderBuffer.Width() != renderWidth || renderBuffer.Height() != renderHeight)) {
             ClearTextTextureCacheForRenderer(renderBuffer.Renderer());
         }
