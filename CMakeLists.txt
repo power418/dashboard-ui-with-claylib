@@ -27,6 +27,10 @@ target_link_libraries(dashboard_clay PRIVATE
     ${DASHBOARD_SDL_TTF_TARGET}
 )
 
+if (WIN32)
+  target_link_libraries(dashboard_clay PRIVATE Gdiplus winmm)
+endif()
+
 target_compile_definitions(dashboard_clay PRIVATE
     SDL_MAIN_HANDLED
     SDL_ENABLE_OLD_NAMES

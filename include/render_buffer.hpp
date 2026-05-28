@@ -87,7 +87,9 @@ public:
         }
         glBindTexture(GL_TEXTURE_2D, texture_);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, surface_->pitch / 4);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width_, height_, GL_RGBA, GL_UNSIGNED_BYTE, surface_->pixels);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 

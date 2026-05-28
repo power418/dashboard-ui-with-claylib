@@ -1,3 +1,13 @@
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <objidl.h>
+#include <gdiplus.h>
+#include <mmsystem.h>
+#endif
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -66,11 +76,57 @@ constexpr Clay_Color Transparent = Rgba(0, 0, 0, 0);
 } // namespace Pal
 
 bool gHandCursorRequested = false;
+#ifdef _WIN32
+dashboard::AntiAliasMode gAntiAliasMode = dashboard::AntiAliasMode::FXAA;
+#else
 dashboard::AntiAliasMode gAntiAliasMode = dashboard::AntiAliasMode::SMAA;
+#endif
 float gUiScale = 1.0f;
 int gRenderScale = 1;
+#ifdef _WIN32
+int gRequestedRenderScale = 1;
+#else
 int gRequestedRenderScale = 2;
+#endif
+#ifdef _WIN32
+char gAntiAliasBadge[48] = "FXAA 1x 100%";
+#else
 char gAntiAliasBadge[48] = "SMAA 1x 100%";
+#endif
+
+#ifdef _WIN32
+constexpr bool kFastSoftwarePrimitives = true;
+#else
+constexpr bool kFastSoftwarePrimitives = false;
+#endif
+
+#ifdef _WIN32
+class WindowsNativeRuntime {
+public:
+    WindowsNativeRuntime() {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        timeBeginPeriod(1);
+
+        Gdiplus::GdiplusStartupInput input{};
+        if (Gdiplus::GdiplusStartup(&gdiplusToken_, &input, nullptr) != Gdiplus::Ok) {
+            gdiplusToken_ = 0;
+        }
+    }
+
+    WindowsNativeRuntime(const WindowsNativeRuntime &) = delete;
+    WindowsNativeRuntime &operator=(const WindowsNativeRuntime &) = delete;
+
+    ~WindowsNativeRuntime() {
+        if (gdiplusToken_ != 0) {
+            Gdiplus::GdiplusShutdown(gdiplusToken_);
+        }
+        timeEndPeriod(1);
+    }
+
+private:
+    ULONG_PTR gdiplusToken_ = 0;
+};
+#endif
 
 float Scale(float value) {
     return value * gUiScale;
@@ -820,16 +876,26 @@ class FontBook {
 public:
     FontBook() {
         regularPath_ = ExistingPath({
+            "C:/Windows/Fonts/segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/tahoma.ttf",
+            "C:/Windows/Fonts/verdana.ttf",
             "/usr/share/fonts/TTF/OpenSans-Regular.ttf",
             "/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         });
         boldPath_ = ExistingPath({
+            "C:/Windows/Fonts/segoeuib.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+            "C:/Windows/Fonts/tahomabd.ttf",
+            "C:/Windows/Fonts/verdanab.ttf",
             "/usr/share/fonts/TTF/OpenSans-Bold.ttf",
             "/usr/share/fonts/Adwaita/AdwaitaSans-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         });
         monoPath_ = ExistingPath({
+            "C:/Windows/Fonts/consola.ttf",
+            "C:/Windows/Fonts/cour.ttf",
             "/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf",
             "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
@@ -892,12 +958,51 @@ Clay_Dimensions MeasureText(Clay_StringSlice text, Clay_TextElementConfig *confi
     auto *fonts = static_cast<FontBook *>(userData);
     const uint16_t fontId = config ? config->fontId : 0;
     const uint16_t fontSize = config ? config->fontSize : 12;
-    TTF_Font *font = fonts->Get(fontId, fontSize);
-    if (!font || !text.chars || text.length <= 0) {
+    if (!text.chars || text.length <= 0) {
         return Clay_Dimensions{0.0f, static_cast<float>(fontSize + 4)};
     }
 
     std::string value(text.chars, static_cast<size_t>(text.length));
+    struct MeasureKey {
+        std::string value;
+        uint16_t fontId = 0;
+        uint16_t fontSize = 0;
+        int32_t letterSpacing = 0;
+        uint16_t lineHeight = 0;
+
+        bool operator<(const MeasureKey &other) const {
+            if (fontId != other.fontId) {
+                return fontId < other.fontId;
+            }
+            if (fontSize != other.fontSize) {
+                return fontSize < other.fontSize;
+            }
+            if (letterSpacing != other.letterSpacing) {
+                return letterSpacing < other.letterSpacing;
+            }
+            if (lineHeight != other.lineHeight) {
+                return lineHeight < other.lineHeight;
+            }
+            return value < other.value;
+        }
+    };
+    static std::map<MeasureKey, Clay_Dimensions> measureCache;
+    MeasureKey key{
+        value,
+        fontId,
+        fontSize,
+        config ? static_cast<int32_t>(config->letterSpacing) : 0,
+        config ? static_cast<uint16_t>(config->lineHeight) : static_cast<uint16_t>(0),
+    };
+    if (const auto found = measureCache.find(key); found != measureCache.end()) {
+        return found->second;
+    }
+
+    TTF_Font *font = fonts->Get(fontId, fontSize);
+    if (!font) {
+        return Clay_Dimensions{0.0f, static_cast<float>(fontSize + 4)};
+    }
+
     int width = 0;
     int height = 0;
     if (!TTF_GetStringSize(font, value.c_str(), 0, &width, &height)) {
@@ -905,7 +1010,9 @@ Clay_Dimensions MeasureText(Clay_StringSlice text, Clay_TextElementConfig *confi
     }
     const float letterSpacing = config ? static_cast<float>(config->letterSpacing) * std::max(0, text.length - 1) : 0.0f;
     const float lineHeight = config && config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : static_cast<float>(height);
-    return Clay_Dimensions{static_cast<float>(width) + letterSpacing, lineHeight};
+    Clay_Dimensions measured{static_cast<float>(width) + letterSpacing, lineHeight};
+    measureCache.emplace(std::move(key), measured);
+    return measured;
 }
 
 void ClayError(Clay_ErrorData error) {
@@ -1207,6 +1314,11 @@ void DrawLineAA(SDL_Renderer *renderer, float x0, float y0, float x1, float y1, 
 
 void DrawLineThick(SDL_Renderer *renderer, float x1, float y1, float x2, float y2, Clay_Color color, int thickness = 1) {
     thickness = ScalePixels(thickness);
+    if (kFastSoftwarePrimitives && thickness <= 1) {
+        SetColor(renderer, color);
+        SDL_RenderDrawLine(renderer, static_cast<int>(std::round(x1)), static_cast<int>(std::round(y1)), static_cast<int>(std::round(x2)), static_cast<int>(std::round(y2)));
+        return;
+    }
     if (thickness <= 1) {
         DrawLineAA(renderer, x1, y1, x2, y2, color);
         return;
@@ -1642,6 +1754,10 @@ void RenderClayTextOverlay(SDL_Renderer *renderer, FontBook &fonts, Clay_RenderC
 } // namespace
 
 int main() {
+#ifdef _WIN32
+    WindowsNativeRuntime windowsRuntime;
+#endif
+
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
@@ -1657,8 +1773,13 @@ int main() {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+#ifdef _WIN32
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+#else
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+#endif
 
     SDL_Window *window = SDL_CreateWindow(
         "Clay Dashboard",
